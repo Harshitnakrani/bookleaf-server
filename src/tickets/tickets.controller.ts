@@ -10,6 +10,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -24,6 +31,8 @@ import { QueryTicketsDto } from './dto/query-tickets.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { TicketsService } from './tickets.service';
 
+@ApiTags('Support Tickets & AI Resolution')
+@ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('tickets')
 export class TicketsController {
@@ -33,6 +42,14 @@ export class TicketsController {
    * Submit a new support query (Author)
    */
   @Post()
+  @ApiOperation({
+    summary: 'Submit Support Ticket (Author)',
+    description:
+      'Submits a new author ticket. Persists immediately to PostgreSQL, queues BullMQ auto-triage, and triggers the AI autonomous resolution ReAct loop.',
+  })
+  @ApiResponse({ status: 201, description: 'Ticket created and enqueued for AI triage' })
+  @ApiResponse({ status: 400, description: 'Validation failure' })
+  @ApiResponse({ status: 403, description: 'Author does not own the associated book' })
   async createTicket(
     @CurrentUser('id') authorId: string,
     @Body() dto: CreateTicketDto,
@@ -46,6 +63,12 @@ export class TicketsController {
    * - Admins receive the global Ticket Queue with status, category, priority filters and urgency sorting.
    */
   @Get()
+  @ApiOperation({
+    summary: 'List Tickets',
+    description:
+      'Authors receive their own ticket list. Admins receive global queue with multi-dimensional filtering, full-text search, and urgency sorting.',
+  })
+  @ApiResponse({ status: 200, description: 'List of tickets with author metadata and counts' })
   async getTickets(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: QueryTicketsDto,
@@ -57,6 +80,14 @@ export class TicketsController {
    * Single ticket details & conversation thread
    */
   @Get(':id')
+  @ApiOperation({
+    summary: 'Get Ticket Details & Thread',
+    description: 'Retrieves complete ticket conversation, AI tool audit steps, and root-cause analysis findings',
+  })
+  @ApiParam({ name: 'id', description: 'Ticket ID' })
+  @ApiResponse({ status: 200, description: 'Ticket details, messages, and audit trail' })
+  @ApiResponse({ status: 403, description: 'Forbidden: Author does not own ticket' })
+  @ApiResponse({ status: 404, description: 'Ticket not found' })
   async getTicketById(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -70,6 +101,13 @@ export class TicketsController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   @Get(':id/ai-draft')
+  @ApiOperation({
+    summary: 'Generate AI Reply Draft (Admin)',
+    description: 'Generates empathetic draft grounded in author data and BookLeaf policies (cached in Redis/Valkey)',
+  })
+  @ApiParam({ name: 'id', description: 'Ticket ID' })
+  @ApiResponse({ status: 200, description: 'AI drafted empathetic response with suggested actions' })
+  @ApiResponse({ status: 403, description: 'Requires ADMIN role' })
   async getAiDraft(@Param('id') id: string) {
     return this.ticketsService.getAiDraftResponse(id);
   }
@@ -78,6 +116,12 @@ export class TicketsController {
    * Post a reply or internal note in a ticket conversation
    */
   @Post(':id/messages')
+  @ApiOperation({
+    summary: 'Post Message or Internal Note',
+    description: 'Appends a response to ticket thread or records a private ops team note (hidden from author)',
+  })
+  @ApiParam({ name: 'id', description: 'Ticket ID' })
+  @ApiResponse({ status: 201, description: 'Message created and broadcasted via WebSockets' })
   async addMessage(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -92,6 +136,12 @@ export class TicketsController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   @Patch(':id/status')
+  @ApiOperation({
+    summary: 'Update Ticket Status (Admin)',
+    description: 'Updates ticket lifecycle state and emits real-time status update',
+  })
+  @ApiParam({ name: 'id', description: 'Ticket ID' })
+  @ApiResponse({ status: 200, description: 'Status updated' })
   async updateStatus(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -106,6 +156,12 @@ export class TicketsController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   @Patch(':id/override')
+  @ApiOperation({
+    summary: 'Override AI Classification (Admin)',
+    description: 'Human operator override for AI category or priority, logging an audit record',
+  })
+  @ApiParam({ name: 'id', description: 'Ticket ID' })
+  @ApiResponse({ status: 200, description: 'Overrides applied and audit logged' })
   async overrideTicket(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -120,6 +176,12 @@ export class TicketsController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   @Patch(':id/assign')
+  @ApiOperation({
+    summary: 'Assign Ticket to Operator (Admin)',
+    description: 'Assigns ticket to an operations specialist or clears assignment',
+  })
+  @ApiParam({ name: 'id', description: 'Ticket ID' })
+  @ApiResponse({ status: 200, description: 'Ticket assignment updated' })
   async assignTicket(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -135,6 +197,12 @@ export class TicketsController {
   @Roles(Role.ADMIN)
   @Post(':id/ai-reclassify')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Re-trigger AI Triage (Admin)',
+    description: 'Re-executes AI classification, priority scoring, and autonomous investigation',
+  })
+  @ApiParam({ name: 'id', description: 'Ticket ID' })
+  @ApiResponse({ status: 200, description: 'AI triage re-executed' })
   async retriggerTriage(@Param('id') id: string) {
     return this.ticketsService.retriggerTriage(id);
   }
@@ -144,6 +212,13 @@ export class TicketsController {
    */
   @Post(':id/ai-resolve')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Trigger AI Autonomous Resolution Loop',
+    description:
+      'Executes multi-turn ReAct agent loop: investigates database facts, checks BookLeaf policies, records root cause to PostgreSQL, and dispatches empathetic resolution letter.',
+  })
+  @ApiParam({ name: 'id', description: 'Ticket ID' })
+  @ApiResponse({ status: 200, description: 'Autonomous agent resolution completed' })
   async runAiResolution(@Param('id') id: string) {
     return this.ticketsService.runAiResolution(id);
   }
