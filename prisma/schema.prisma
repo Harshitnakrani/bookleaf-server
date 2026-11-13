@@ -1,0 +1,196 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  AUTHOR
+  ADMIN
+  SUPPORT_AGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketCategory {
+  ROYALTY_AND_PAYMENTS
+  ISBN_AND_METADATA_ISSUES
+  PRINTING_AND_QUALITY
+  DISTRIBUTION_AND_AVAILABILITY
+  BOOK_STATUS_AND_PRODUCTION_UPDATES
+  GENERAL_INQUIRY
+}
+
+enum TicketPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model User {
+  id         String   @id @default(cuid())
+  authorId   String?  @unique // e.g. AUTH001, AUTH002 from sample dataset
+  name       String
+  email      String   @unique
+  password   String
+  phone      String?
+  city       String?
+  role       Role     @default(AUTHOR)
+  joinedDate DateTime @default(now())
+
+  bankAccountNumber   String?
+  bankIfscCode        String?
+  bankAccountName     String?
+  isBankDetailsLinked Boolean @default(false)
+
+  books           Book[]
+  tickets         Ticket[]         @relation("AuthorTickets")
+  assignedTickets Ticket[]         @relation("AssignedTickets")
+  messages        TicketMessage[]
+  auditLogs       TicketAuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([authorId])
+  @@index([role])
+}
+
+model Book {
+  id                    String    @id @default(cuid())
+  bookId                String    @unique // e.g. BK001, BK002 from sample dataset
+  title                 String
+  isbn                  String?
+  genre                 String
+  publicationDate       DateTime?
+  status                String // "Published & Live", "In Production - Cover Design", "In Production - Typesetting"
+  mrp                   Decimal?  @db.Decimal(10, 2)
+  authorRoyaltyPerCopy  Decimal?  @db.Decimal(10, 2)
+  totalCopiesSold       Int       @default(0)
+  totalRoyaltyEarned    Decimal   @default(0) @db.Decimal(12, 2)
+  royaltyPaid           Decimal   @default(0) @db.Decimal(12, 2)
+  royaltyPending        Decimal   @default(0) @db.Decimal(12, 2)
+  lastRoyaltyPayoutDate DateTime?
+  printPartner          String? // "In-House", "Repro India", "Epitome Books"
+  availableOn           String[] // ["Amazon India", "Flipkart", "Amazon US", "BookLeaf Store"]
+
+  authorId String
+  author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  tickets  Ticket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+  @@index([bookId])
+  @@index([isbn])
+  @@index([status])
+}
+
+model Ticket {
+  id             String       @id @default(cuid())
+  ticketNumber   String       @unique // Human-readable ticket reference e.g. "TICK-1001"
+  subject        String
+  description    String       @db.Text
+  attachmentUrl  String?
+  attachmentName String?
+  status         TicketStatus @default(OPEN)
+
+  category             TicketCategory  @default(GENERAL_INQUIRY)
+  aiCategory           TicketCategory?
+  isCategoryOverridden Boolean         @default(false)
+
+  priority             TicketPriority  @default(MEDIUM)
+  aiPriority           TicketPriority?
+  isPriorityOverridden Boolean         @default(false)
+
+  aiDraftResponse    String?   @db.Text
+  aiDraftGeneratedAt DateTime?
+  aiConfidence       Float?
+  aiReasoning        String?   @db.Text
+
+  authorId String
+  author   User   @relation("AuthorTickets", fields: [authorId], references: [id], onDelete: Cascade)
+
+  bookId String?
+  book   Book?   @relation(fields: [bookId], references: [id], onDelete: SetNull)
+
+  assignedToId String? 
+  assignedTo   User?   @relation("AssignedTickets", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  resolvedAt DateTime?
+  closedAt   DateTime?
+
+  messages  TicketMessage[]
+  auditLogs TicketAuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+  @@index([bookId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([category])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+model TicketMessage {
+  id       String @id @default(cuid())
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  content        String  @db.Text
+  isInternalNote Boolean @default(false) // If true, only visible to admins/ops
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ticketId])
+  @@index([senderId])
+}
+
+model TicketAuditLog {
+  id       String @id @default(cuid())
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  userId String? // Null if action was taken by AI/System worker
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action  String // e.g., "CREATED", "AI_CLASSIFIED", "PRIORITY_OVERRIDDEN", "CATEGORY_OVERRIDDEN", "STATUS_UPDATED", "ASSIGNED"
+  details Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([userId])
+}
+
+model KnowledgeBaseArticle {
+  id       String         @id @default(cuid())
+  category TicketCategory
+  title    String
+  content  String         @db.Text
+  keywords String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+}
