@@ -118,7 +118,7 @@ Respond strictly with a JSON object:
       try {
         const model =
           this.configService.get<string>('GROQ_MODEL') ||
-          'llama-3.1-8b-instant';
+          'openai/gpt-oss-120b';
         const completion = await this.groqClient.chat.completions.create({
           model,
           messages: [{ role: 'user', content: prompt }],
@@ -250,7 +250,7 @@ REQUIREMENTS:
       try {
         const model =
           this.configService.get<string>('GROQ_MODEL') ||
-          'llama-3.1-8b-instant';
+          'openai/gpt-oss-120b';
         const completion = await this.groqClient.chat.completions.create({
           model,
           messages: [{ role: 'system', content: systemPrompt }],

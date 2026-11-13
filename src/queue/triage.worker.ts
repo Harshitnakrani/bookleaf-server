@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Job, Worker } from 'bullmq';
 import { AiService } from '../ai/ai.service';
+import { AgentService } from '../ai/agent.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TriageJobData } from './queue.service';
@@ -20,6 +21,7 @@ export class TriageWorker implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
+    private readonly agentService: AgentService,
     private readonly realtimeService: RealtimeService,
   ) {}
 
@@ -162,6 +164,18 @@ export class TriageWorker implements OnModuleInit, OnModuleDestroy {
       this.logger.log(
         `Ticket ${ticket.ticketNumber} triaged -> Category: ${result.category}, Priority: ${result.priority}`,
       );
+
+      // 5. Trigger AI-First Autonomous Resolution Agent (ReAct Loop)
+      try {
+        this.logger.log(
+          `🤖 Launching autonomous resolution agent for Ticket #${ticket.ticketNumber}`,
+        );
+        await this.agentService.runAutonomousResolution(ticketId);
+      } catch (agentErr) {
+        this.logger.error(
+          `AI Autonomous Resolution Agent failed for ${ticketId}: ${(agentErr as Error).message}`,
+        );
+      }
     } catch (err) {
       this.logger.error(`Error during triage of ${ticketId}: ${(err as Error).message}`);
       throw err;

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Role, TicketCategory, TicketPriority, TicketStatus } from '@prisma/client';
 import { AiService } from '../ai/ai.service';
+import { AgentService } from '../ai/agent.service';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
@@ -28,6 +29,7 @@ export class TicketsService {
     private readonly queueService: QueueService,
     private readonly triageWorker: TriageWorker,
     private readonly aiService: AiService,
+    private readonly agentService: AgentService,
     private readonly realtimeService: RealtimeService,
   ) {}
 
@@ -635,5 +637,20 @@ export class TicketsService {
     return this.prisma.ticket.findUnique({
       where: { id: ticketId },
     });
+  }
+
+  /**
+   * 10. Run autonomous resolution agent directly (on-demand or re-run)
+   */
+  async runAiResolution(ticketId: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with ID "${ticketId}" not found`);
+    }
+
+    return this.agentService.runAutonomousResolution(ticketId);
   }
 }

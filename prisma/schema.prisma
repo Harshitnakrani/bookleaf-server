@@ -120,6 +120,12 @@ model Ticket {
   aiConfidence       Float?
   aiReasoning        String?   @db.Text
 
+  isAiResolved        Boolean   @default(false)
+  aiFaultParty        String?
+  aiFaultReason       String?   @db.Text
+  aiResolutionSummary String?   @db.Text
+  aiToolSteps         Json?
+
   authorId String
   author   User   @relation("AuthorTickets", fields: [authorId], references: [id], onDelete: Cascade)
 
@@ -157,6 +163,7 @@ model TicketMessage {
 
   content        String  @db.Text
   isInternalNote Boolean @default(false) // If true, only visible to admins/ops
+  isAiGenerated  Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -138,4 +138,13 @@ export class TicketsController {
   async retriggerTriage(@Param('id') id: string) {
     return this.ticketsService.retriggerTriage(id);
   }
+
+  /**
+   * Run Autonomous AI Resolution agent on ticket (Investigation, DB writes, Root cause, Reply)
+   */
+  @Post(':id/ai-resolve')
+  @HttpCode(HttpStatus.OK)
+  async runAiResolution(@Param('id') id: string) {
+    return this.ticketsService.runAiResolution(id);
+  }
 }
